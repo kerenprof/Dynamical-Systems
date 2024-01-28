@@ -58,14 +58,29 @@ import zipfile
 # *   $I = 0 nA$
 
 # %%
-def forward_euler_passive_neuron(t, dt=0.1, R=25, C=1, V_init=0, I=0):
+global MEGA_OHM 
+MEGA_OHM = 1e6
+global NANO_F
+NANO_F = 1e-9
+global MS
+MS = 1e-3
+global NANO_A
+NANO_A = 1e-9
+global mV
+mV = 1e-3
+def forward_euler(dt=0.1*MS, R=25*MEGA_OHM, C=1*NANO_F, Vreset=0, I=0*NANO_A):
+  Vt = Vreset + ((-Vreset/(R*C))+(I/C))*dt
+  return Vt
+
+def forward_euler_passive_neuron(t, dt, R, C, V_init, I):
 
     time_axis = np.arange(0, t, dt)
     v_membrane = np.zeros(len(time_axis))
     v_membrane[0] = V_init
 
     for t in range(1, len(time_axis)):
-        v_membrane[t] = v_membrane[t - 1] + dt * (- v_membrane[t - 1] / (R * C) + I / C)
+        v_membrane[t] = forward_euler(dt, R, C, Vreset=V_init, I=I)
+        V_init = v_membrane[t]
 
     return v_membrane, time_axis
 
@@ -78,14 +93,14 @@ def forward_euler_passive_neuron(t, dt=0.1, R=25, C=1, V_init=0, I=0):
 # Plot $V$ as a function of $t$.
 
 # %%
-v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=0, I=0)
+"""v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=0, I=0)
 
 plt.plot(time_axis, v_membrane)
 plt.xlabel('Time (ms)')
 plt.ylabel('Membrane Potential (mV)')
 plt.title('V_init=0, I=0')
 plt.show()
-
+"""
 # %% [markdown]
 # #### 1.2
 # 
@@ -96,14 +111,14 @@ plt.show()
 # Explain what do you see.
 
 # %%
-v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=10, I=0)
+"""v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=10, I=0)
 
 plt.plot(time_axis, v_membrane)
 plt.xlabel('Time (ms)')
 plt.ylabel('Membrane Potential (mV)')
 plt.title('V_init=10, I=0')
 plt.show()
-
+"""
 # %% [markdown]
 # The membrane potential declines in a logarithmic manner from the initial voltage, as no current is injected.
 
@@ -113,7 +128,7 @@ plt.show()
 # Repeat 1.1, 1.2 with $ I = 0.5 nA $.
 
 # %%
-v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=0, I=0.5)
+"""v_membrane, time_axis = forward_euler_passive_neuron(t=100, dt=0.1, R=25, C=1, V_init=0, I=0.5)
 
 plt.plot(time_axis, v_membrane)
 plt.xlabel('Time (ms)')
@@ -127,7 +142,7 @@ plt.plot(time_axis, v_membrane)
 plt.xlabel('Time (ms)')
 plt.ylabel('Membrane Potential (mV)')
 plt.title('V_init=10, I=0.5')
-plt.show()
+plt.show()"""
 
 # %% [markdown]
 # The membrane potential charges similar to a capacitor, in the same way for each initial membrane potential.
@@ -149,6 +164,7 @@ plt.show()
 # *   $T_{refrac}$: $3 ms$
 
 # %%
+
 def integrate_and_fire(t, dt, R, C, Vth, Vreset, Trefrac, I):
 
     time_axis = np.arange(0, t, dt)
@@ -173,30 +189,25 @@ def integrate_and_fire(t, dt, R, C, Vth, Vreset, Trefrac, I):
     spike_frequency = spike_count / (len(time_axis) * dt * 1e-3)
 
     return spike_frequency
-
+  
 def integrate_and_fire_vec(t, dt, R, C, Vth, Vreset, Trefrac, I):
-
-    time_axis = np.arange(0, t, dt)
-    v_membrane = np.zeros(len(time_axis))
-    v_membrane[0] = Vreset  # Initial membrane potential set to reset value
     spike_count = 0
-    refractory_steps = int(Trefrac / dt)
-    spikes_ind = []
-    # Simulation loop using Forward Euler method
-    for t in range(1, len(time_axis)):
-        if refractory_steps > 0:
-            refractory_steps -= 1
-            v_membrane[t] = Vreset  # Clamp membrane potential during refractory period
-        else:
-            v_membrane[t] = v_membrane[t - 1] + dt * (- v_membrane[t - 1] / (R * C) + I[t] / C)
-
-            if v_membrane[t] >= Vth:
-                spike_count += 1
-                if spike_count == 1: print(f"First spike at time {t * dt} ms")
-                spikes_ind.append(t)
-                v_membrane[t] = Vreset  # Reset membrane potential
-                refractory_steps = int(Trefrac / dt)
-    return v_membrane, spikes_ind
+    t_to_jump = 0
+    spike_ind = []
+    V = np.zeros(int(t/dt))
+    V0 = Vreset
+    time_axis = np.arange(0, t, dt)
+    for t in range(len(time_axis)):
+        if t<t_to_jump:
+            continue
+        V[t] = V0 + ((-V0/(R*C))+(I[t]/C))*dt
+        V0 = np.copy(V[t])
+        if V[t] >= Vth:
+            spike_count += 1
+            spike_ind.append(t)
+            V0 = np.copy(Vreset)
+            t_to_jump = t+Trefrac
+    return V, spike_ind
 # %% [markdown]
 # #### 2.1
 # 
@@ -208,7 +219,7 @@ def integrate_and_fire_vec(t, dt, R, C, Vth, Vreset, Trefrac, I):
 
 # %%
 # Example usage for different injected currents
-current_amplitudes = np.arange(0, 1.6, 0.1)  # Injected currents from 0 to 1.5 nA
+"""current_amplitudes = np.arange(0, 1.6, 0.1)  # Injected currents from 0 to 1.5 nA
 spike_frequencies = []
 
 for I in current_amplitudes:
@@ -220,7 +231,7 @@ plt.plot(current_amplitudes, spike_frequencies, 'o-')
 plt.xlabel('Injected Current (nA)')
 plt.ylabel('Spike Frequency (Hz)')
 plt.title('Integrate-and-Fire Neuron: Frequency vs Injected Current')
-plt.show()
+plt.show()"""
 
 # %% [markdown]
 # #### 2.2 Bonus (10 points)
@@ -228,7 +239,7 @@ plt.show()
 # maximum frequency? What is it?
 
 # %%
-current_amplitudes = np.arange(0, 1.6, 0.1)
+"""current_amplitudes = np.arange(0, 1.6, 0.1)
 
 plt.figure(figsize=(6, 15))
 plt.subplot(3, 1, 1)
@@ -272,7 +283,7 @@ plt.xlabel('Injected Current (nA)')
 plt.ylabel('Spike Frequency (Hz)')
 plt.legend()
 plt.title('Frequency vs Injected Current with different T refrac')
-plt.show()
+plt.show()"""
 
 
 
@@ -361,30 +372,8 @@ plt.show()
 # %%
 
 import scipy as sp
-# def find_longest_spike_free_period_after_first(times, voltages, threshold_voltage):
-#     peaks, _ = sp.signal.find_peaks(voltages, height=threshold_voltage)
-#     first_peak = peaks[0]
-#     longest_period = peaks[1]-peaks[0]
-#     peak_ind = first_peak
-#     longest_period_start = 0
-#     longest_period_end = 0
-#     for i, p in enumerate(peaks[1:]):
-#         if p - peaks[i-1] > longest_period:
-#             longest_period = p - peaks[i-1]
-#             longest_period_start = peaks[i-1]
-#             longest_period_end = p
 
-#     print(f'longest piece of time where no spikes occur is {round(longest_period, 3)} ms long, between {round(longest_period_start, 3)} ms and {round(longest_period_end, 3)} ms')
-#     return longest_period_start, longest_period_end
 
-Vth = -35
-# longest_period_start, longest_period_end = find_longest_spike_free_period_after_first(times, voltages, Vth)
-# plt.figure()
-# plt.plot(times[longest_period_start:longest_period_end], voltages[longest_period_start:longest_period_end])
-# dt = times[1] - times[0]
-# peaks, _ = sp.signal.find_peaks(voltages, height=Vth)
-# # plt.scatter(peaks*dt, np.ones(len(peaks))*max(voltages), color='red')
-# plt.show()
 def find_longest_spike_free_period_after_first(times, voltages, threshold_voltage):
     # Identify intervals without spikes (where voltage < threshold_voltage) after the first spike
     dt = times[1] - times[0]
@@ -404,26 +393,38 @@ def find_longest_spike_free_period_after_first(times, voltages, threshold_voltag
     T = longest_spike_free_period[-1] - longest_spike_free_period[0]
     longest_spike_free_period = [int(t/dt) for t in longest_spike_free_period]
     return T, longest_spike_free_period
+Vth = -38*mV
 T, longest_period = find_longest_spike_free_period_after_first(times, voltages, Vth)
 print(f'longest piece of time where no spikes occur is {round(T, 3)} s, from {round(longest_period[0], 3)} s to {round(longest_period[-1], 3)} s')
 
 
 # %%
-possible_R = np.arange(10, 50, 10)
-possible_C = np.arange(0.1, 1, 0.1)
+possible_R = np.arange(10, 50, 10)*MEGA_OHM
+possible_C = np.arange(0.1, 1, 0.1)*NANO_F
 
 searched_combinations = []
 errors = []
 
-Vreset=voltages[longest_period[0]]
-t = times[-1]
-dt = times[1] - times[0]
-Trefrac = 3
+def no_fire_integration(t_0, t, dt, R, C, Vth, Vreset, Trefrac, I):
+    V = np.zeros(int(t/dt))
+    V0 = Vreset
+    time_axis = np.arange(t_0, t, dt, dtype=int)
+    for t in time_axis:
+        V[t] = V0 + ((-(V0-Vreset)/(R*C))+(I[t]/C))*dt
+        V0 = np.copy(V[t])
+    return V
+t_0 = longest_period[0]
+t = longest_period[-1]
+Vreset=voltages[t_0+20]*mV
+dt = 0.1*MS
+# import ipdb;ipdb.set_trace()
+Trefrac = 3*MS
+I = [i*NANO_A for i in currents]
 for R in possible_R:
     for C in possible_C:
-        v_model, _ = integrate_and_fire_vec(t, dt, R, C, Vth, Vreset, Trefrac, currents)
-        v_neuron = voltages
-        error = np.mean((v_model[longest_period[0]:longest_period[-1]] - v_neuron[longest_period[0]:longest_period[-1]])**2)
+        v_model = no_fire_integration(t_0, t, dt, R, C, Vth, Vreset, Trefrac, I)
+        v_neuron = [v*mV for v in voltages[t_0:t]]
+        error = np.mean([(v_m - v_n)**2 for v_m, v_n in zip(v_model, v_neuron)])
         print(f'error for R = {R} and C = {C} is {error}')
 
         searched_combinations.append((R, C))
@@ -438,11 +439,15 @@ best_combination = searched_combinations[minimal_error_index]
 print(f"Minimal Error: {minimal_error}")
 print(f"Best Combination (R, C): {best_combination}")
 
-v_model_to_plot, _ = integrate_and_fire_vec(t, dt, best_combination[0], best_combination[1], Vth, Vreset, Trefrac, currents)
+v_model_to_plot, _ = no_fire_integration(t_0, t, dt, best_combination[0], best_combination[1], Vth, Vreset, Trefrac, I)
 plt.figure()
-plt.plot(times[longest_period[0]:longest_period[-1]], voltages[longest_period[0]:longest_period[-1]], label='True Membrane Potential')
-plt.plot(times[longest_period[0]:longest_period[-1]], v_model_to_plot[longest_period[0]:longest_period[-1]], label='Model Membrane Potential')
+plt.plot(times[t_0:t], voltages[t_0:t], label='True Membrane Potential')
+plt.plot(times[t_0:t], v_model_to_plot[t_0:t], label='Model Membrane Potential')
 plt.legend()
+plt.show()
+
+plt.figure()
+plt.plot(times, v_model_to_plot)
 plt.show()
 
 # %% [markdown]
@@ -461,7 +466,7 @@ plt.show()
 # 
 
 # %%
-
+t = times[-1]
 def neuron_spikes(voltages, threshold_voltage):
     spikes = []
     for t, v in enumerate(voltages[1:]):
@@ -478,36 +483,36 @@ tolerance_ms = 2
 
 
 
-thresholds = [-60, -55, -50, -45, -40, -35, -30, -25, -20, -15]
-tpr_list = []
-fpr_list = []
-t = times[-1]
-dt = times[1] - times[0]
-R = 20
-C = .6
-Vreset = voltages[0]
-Trefrac = R*C*5
-plt.figure(figsize=(10, 5))
-for threshold in thresholds:
-    true_spikes = neuron_spikes(voltages, threshold)
-    v_membrane, predicted_spikes = integrate_and_fire_vec(t, dt, R, C, threshold, Vreset, Trefrac, currents)
-    N_TP, N_FP = compute_tp_fp(true_spikes, predicted_spikes, tolerance_ms, dt)
-    # Calculate TPR and FPR here and append to tpr_list and fpr_list
-    tpr = N_TP / len(true_spikes)
-    try:
-        fpr = N_FP / len(predicted_spikes)
-    except ZeroDivisionError:
-        fpr = 0
-        continue
-    tpr_list.append(tpr)
-    fpr_list.append(fpr)
-    plt.plot(fpr_list, tpr_list, label=f'Threshold: {threshold}')
-    plt.legend()
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC Curve')
+# thresholds = [-60, -55, -50, -45, -40, -35, -30, -25, -20, -15]
+# tpr_list = []
+# fpr_list = []
+# t = times[-1]
+# dt = times[1] - times[0]
+# R = 20
+# C = .6
+# Vreset = voltages[0]
+# Trefrac = R*C*5
+# plt.figure(figsize=(10, 5))
+# for threshold in thresholds:
+#     true_spikes = neuron_spikes(voltages, threshold)
+#     v_membrane, predicted_spikes = integrate_and_fire_vec(t, dt, R, C, threshold, Vreset, Trefrac, currents)
+#     N_TP, N_FP = compute_tp_fp(true_spikes, predicted_spikes, tolerance_ms, dt)
+#     # Calculate TPR and FPR here and append to tpr_list and fpr_list
+#     tpr = N_TP / len(true_spikes)
+#     try:
+#         fpr = N_FP / len(predicted_spikes)
+#     except ZeroDivisionError:
+#         fpr = 0
+#         continue
+#     tpr_list.append(tpr)
+#     fpr_list.append(fpr)
+#     plt.plot(fpr_list, tpr_list, label=f'Threshold: {threshold}')
+#     plt.legend()
+# plt.xlabel('False Positive Rate')
+# plt.ylabel('True Positive Rate')
+# plt.title('ROC Curve')
 
-plt.show()
+# plt.show()
 
 # %% [markdown]
 # #### 3.4
